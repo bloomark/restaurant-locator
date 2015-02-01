@@ -8,46 +8,139 @@ using System.Dynamic;
 using System.Net;
 using System.Xml;
 using System.Xml.Linq;
+using System.Device.Location;
+using System.Threading;
 
 namespace restaurant_locator
 {
     class Program
     {
         static Hashtable zipHash = new Hashtable();
+        static String APIKey = "AIzaSyAAQbevauqrUWCObSUKx9W7GIAMAc6U2mA"; //av445
 
-        static void googleGeoCode(string address)
+        static void googleGeoCode(string address, Double searchRadius)
         {
-            String APIKey = "AIzaSyAAQbevauqrUWCObSUKx9W7GIAMAc6U2mA"; //av445
             var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
-            Console.WriteLine(requestURI);
-
+            
             var request = WebRequest.Create(requestURI);
             var response = request.GetResponse();
             XmlDocument xmlResult = new XmlDocument();
             xmlResult.Load(response.GetResponseStream());
 
             String status = xmlResult.SelectSingleNode("/GeocodeResponse/status").InnerText;
-            String zipCode = xmlResult.SelectSingleNode("/GeocodeResponse/result/address_component[7]/long_name").InnerText;
-            Console.WriteLine("status = " + status);
-            Console.WriteLine("zipCode = " + zipCode);
+            //Check status message
+            if (!status.Equals("OK"))
+            {
+                //An error occured or there were no matches
+                Console.WriteLine("Query wasn't successful. Status code - " + status);
+                return;
+            }
 
-            if(!(zipHash.ContainsKey(zipCode)))
+            int i = 1;
+            String zipCode = null;
+
+            while(i > 0)
+            {
+                String type = xmlResult.SelectSingleNode("/GeocodeResponse/result/address_component[" + i + "]/type").InnerText;
+                if(type.Equals("postal_code"))
+                {
+                    zipCode = xmlResult.SelectSingleNode("/GeocodeResponse/result/address_component[" + i + "]/long_name").InnerText;
+                    break;
+                }
+                i = i+1;
+            }
+
+            TimeSpan startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+            Double startSeconds = startTime.TotalMilliseconds;
+
+            int queriesFired = 0;
+            int matchCount = 0;
+            
+            if (!(zipHash.ContainsKey(zipCode)))
             {
                 Console.WriteLine("No matches!");
                 return;
             }
             else
             {
+                String latitude = xmlResult.SelectSingleNode("GeocodeResponse/result/geometry/location/lat").InnerText;
+                String longitude = xmlResult.SelectSingleNode("GeocodeResponse/result/geometry/location/lng").InnerText;
+
+                Double lat = Double.Parse(latitude);
+                Double lng = Double.Parse(longitude);
+
+                GeoCoordinate src = new GeoCoordinate(lat, lng);
+
                 ArrayList matchList = (ArrayList)zipHash[zipCode];
                 foreach (String[] restaurantAddress in matchList)
                 {
-                    foreach (String var in restaurantAddress)
+                    if (queriesFired%5 == 0)
                     {
-                        Console.Write(var + ' ');
+                        TimeSpan currTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+                        Double currSeconds = currTime.TotalMilliseconds;
+
+                        int interval = (int)(currSeconds - startSeconds);
+
+                        if (interval < 1000)
+                        {
+                            System.Threading.Thread.Sleep(1000 - interval);
+                        }
+                        
+                        startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+                        startSeconds = startTime.TotalMilliseconds;
+                        queriesFired = 0;
                     }
-                    Console.WriteLine(' ');
+
+                    String dstAddress = restaurantAddress[3] + " " + restaurantAddress[4] + " " + restaurantAddress[5] + " " + restaurantAddress[6] + " " + restaurantAddress[7];
+                    Double[] latlng = getLatLong(dstAddress);
+                    queriesFired++;
+                    if (latlng[0].Equals(91.0) || latlng[1].Equals(181.0) || latlng[0].Equals(null) || latlng[1].Equals(null))
+                    {
+                        continue;
+                    }
+                    GeoCoordinate dst = new GeoCoordinate(latlng[0], latlng[1]);
+                    
+                    Double distance = src.GetDistanceTo(dst);
+                    distance = distance / 1609.344;
+
+                    if (distance <= searchRadius)
+                    {
+                        Console.WriteLine(dstAddress + " | " + distance);
+                        matchCount++;
+                    }
+                    System.Threading.Thread.Sleep(100);
                 }
             }
+            Console.WriteLine("Number of matches = ", matchCount);
+        }
+
+        static Double[] getLatLong(String address)
+        {
+            Double[] latlng = new Double[2];
+            
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            
+            var request = WebRequest.Create(requestURI);
+            var response = request.GetResponse();
+            XmlDocument xmlResult = new XmlDocument();
+            xmlResult.Load(response.GetResponseStream());
+
+            String status = xmlResult.SelectSingleNode("/GeocodeResponse/status").InnerText;
+            //Check status message
+            if (!status.Equals("OK"))
+            {
+                //An error occured or there were no matches
+                latlng[0] = 91.0;
+                latlng[1] = 181.0;
+            }
+
+            String latitude = xmlResult.SelectSingleNode("GeocodeResponse/result/geometry/location/lat").InnerText;
+            String longitude = xmlResult.SelectSingleNode("GeocodeResponse/result/geometry/location/lng").InnerText;
+
+            latlng[0] = Double.Parse(latitude);
+            latlng[1] = Double.Parse(longitude);
+
+            return latlng;
         }
 
         static void Main(string[] args)
@@ -98,7 +191,13 @@ namespace restaurant_locator
              * User enters street address and search radius
              * Return a list of restaurants that fall within the search radius
              * */
-            googleGeoCode("306 Stewart Ave, Ithaca, NY 14850");
+            String searchAddress;
+            Console.Write("Enter your address - ");
+            searchAddress = Console.ReadLine();
+            Double searchRadius = new Double();
+            Console.Write("Enter your search radius - ");
+            searchRadius = Double.Parse(Console.ReadLine());
+            googleGeoCode(searchAddress, searchRadius);
         }
     }
 }
