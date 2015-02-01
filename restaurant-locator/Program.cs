@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +13,8 @@ namespace restaurant_locator
 {
     class Program
     {
+        static Hashtable zipHash = new Hashtable();
+
         static void googleGeoCode(string address)
         {
             String APIKey = "AIzaSyAAQbevauqrUWCObSUKx9W7GIAMAc6U2mA"; //av445
@@ -28,6 +30,24 @@ namespace restaurant_locator
             String zipCode = xmlResult.SelectSingleNode("/GeocodeResponse/result/address_component[7]/long_name").InnerText;
             Console.WriteLine("status = " + status);
             Console.WriteLine("zipCode = " + zipCode);
+
+            if(!(zipHash.ContainsKey(zipCode)))
+            {
+                Console.WriteLine("No matches!");
+                return;
+            }
+            else
+            {
+                ArrayList matchList = (ArrayList)zipHash[zipCode];
+                foreach (String[] restaurantAddress in matchList)
+                {
+                    foreach (String var in restaurantAddress)
+                    {
+                        Console.Write(var + ' ');
+                    }
+                    Console.WriteLine(' ');
+                }
+            }
         }
 
         static void Main(string[] args)
@@ -39,9 +59,7 @@ namespace restaurant_locator
              * */
             String[] lines;
             String[][] splitLines;
-            Hashtable zipHash = new Hashtable();
-            List<String[]> zipList = new List<String[]>();
-
+            
             WebClient webClient = new WebClient();
 
             //Downloading the csv file
@@ -50,7 +68,7 @@ namespace restaurant_locator
             //System.IO.File.Delete(@"Z:\restaurants_all.csv");
 
             //Using a subset of the csv file
-            lines = System.IO.File.ReadAllLines(@"Z:\restaurants_some.csv");
+            lines = System.IO.File.ReadAllLines(@"Z:\restaurants_all.csv");
 
 
             //Split the addresses
