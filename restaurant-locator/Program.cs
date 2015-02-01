@@ -41,6 +41,7 @@ namespace restaurant_locator
 
             while(i > 0)
             {
+                //Picking up the postal code
                 String type = xmlResult.SelectSingleNode("/GeocodeResponse/result/address_component[" + i + "]/type").InnerText;
                 if(type.Equals("postal_code"))
                 {
@@ -58,6 +59,7 @@ namespace restaurant_locator
             
             if (!(zipHash.ContainsKey(zipCode)))
             {
+                //If there are no restaurants in the zipcode
                 Console.WriteLine("No matches!");
                 return;
             }
@@ -70,12 +72,15 @@ namespace restaurant_locator
                 Double lng = Double.Parse(longitude);
 
                 GeoCoordinate src = new GeoCoordinate(lat, lng);
-
                 ArrayList matchList = (ArrayList)zipHash[zipCode];
+
                 foreach (String[] restaurantAddress in matchList)
                 {
+                    //Iterating over each restaurant in the matching zipcode
                     if (queriesFired%5 == 0)
                     {
+                        //Logic to ensure that you don't cross the query rate for the Google GeoCoding API
+                        //5 queries per second
                         TimeSpan currTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
                         Double currSeconds = currTime.TotalMilliseconds;
 
@@ -91,7 +96,7 @@ namespace restaurant_locator
                         queriesFired = 0;
                     }
 
-                    String dstAddress = restaurantAddress[3] + " " + restaurantAddress[4] + " " + restaurantAddress[5] + " " + restaurantAddress[6] + " " + restaurantAddress[7];
+                    String dstAddress = restaurantAddress[9];
                     Double[] latlng = getLatLong(dstAddress);
                     queriesFired++;
                     if (latlng[0].Equals(91.0) || latlng[1].Equals(181.0) || latlng[0].Equals(null) || latlng[1].Equals(null))
@@ -100,6 +105,7 @@ namespace restaurant_locator
                     }
                     GeoCoordinate dst = new GeoCoordinate(latlng[0], latlng[1]);
                     
+                    //Calculate distance between the input location and the restaurant and convert to miles
                     Double distance = src.GetDistanceTo(dst);
                     distance = distance / 1609.344;
 
@@ -144,6 +150,7 @@ namespace restaurant_locator
                 //An error occured or there were no matches
                 latlng[0] = 91.0;
                 latlng[1] = 181.0;
+                return latlng;
             }
 
             String latitude = xmlResult.SelectSingleNode("GeocodeResponse/result/geometry/location/lat").InnerText;
@@ -174,13 +181,14 @@ namespace restaurant_locator
 
             //Using a subset of the csv file
             lines = System.IO.File.ReadAllLines(@"Z:\restaurants_all.csv");
-
-
+            
             //Split the addresses
             splitLines = new String[lines.Length][];
             for (int i = 0; i < lines.Length; i++)
             {
                 splitLines[i] = lines[i].Split(',');
+                //Create a 9th element which is the concatenated address
+                splitLines[i][9] = splitLines[i][3] + " " + splitLines[i][4] + " " + splitLines[i][5] + " " + splitLines[i][6] + " " + splitLines[i][7];
             }
 
             //Create a hashtable of arraylists
@@ -188,11 +196,13 @@ namespace restaurant_locator
             {
                 if (zipHash.ContainsKey(address[7]))
                 {
+                    //If the key already exists, append the address to the arraylist
                     ArrayList tmp = (ArrayList)zipHash[address[7]];
                     tmp.Add(address);
                 }
                 else
                 {
+                    //If the key doesn't exist, create it and append the address
                     ArrayList tmp = new ArrayList();
                     tmp.Add(address);
                     zipHash[address[7]] = tmp;
@@ -210,6 +220,7 @@ namespace restaurant_locator
             Console.Write("Enter your search radius - ");
             searchRadius = Double.Parse(Console.ReadLine());
             googleGeoCode(searchAddress, searchRadius);
+            Console.WriteLine("Done");
         }
     }
 }
