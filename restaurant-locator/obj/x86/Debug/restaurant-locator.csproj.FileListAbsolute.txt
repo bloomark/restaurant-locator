@@ -1,0 +1,5 @@
+Z:\restaurant-locator\restaurant-locator\bin\Debug\restaurant-locator.exe
+Z:\restaurant-locator\restaurant-locator\bin\Debug\restaurant-locator.pdb
+Z:\restaurant-locator\restaurant-locator\obj\x86\Debug\restaurant-locator.exe
+Z:\restaurant-locator\restaurant-locator\obj\x86\Debug\restaurant-locator.pdb
+Z:\restaurant-locator\restaurant-locator\obj\x86\Debug\restaurant-locator.csprojResolveAssemblyReference.cache
