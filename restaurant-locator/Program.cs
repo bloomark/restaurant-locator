@@ -110,8 +110,8 @@ namespace restaurant_locator
                     }
                     System.Threading.Thread.Sleep(100);
                 }
+                Console.WriteLine("Number of matches = " + matchCount);
             }
-            Console.WriteLine("Number of matches = ", matchCount);
         }
 
         static Double[] getLatLong(String address)
@@ -121,7 +121,19 @@ namespace restaurant_locator
             var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
             
             var request = WebRequest.Create(requestURI);
-            var response = request.GetResponse();
+            WebResponse response = null;
+
+            try
+            {
+                response = request.GetResponse();
+            }
+            catch(WebException e)
+            {
+                latlng[0] = 91.0;
+                latlng[1] = 181.0;
+                return latlng;
+            }
+
             XmlDocument xmlResult = new XmlDocument();
             xmlResult.Load(response.GetResponseStream());
 
