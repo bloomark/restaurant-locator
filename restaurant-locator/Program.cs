@@ -6,6 +6,7 @@ using System.Text;
 using System.IO;
 using System.Dynamic;
 using System.Net;
+using System.Net.Sockets;
 using System.Xml;
 using System.Xml.Linq;
 using System.Device.Location;
@@ -17,8 +18,10 @@ namespace restaurant_locator
     {
         static Hashtable zipHash = new Hashtable();
         static String APIKey = "AIzaSyAAQbevauqrUWCObSUKx9W7GIAMAc6U2mA"; //av445
+        static string data = null;
+        static Socket handler;
 
-        static void googleGeoCode(string address, Double searchRadius)
+        static void restaurantSearch(string address, Double searchRadius)
         {
             var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
             
@@ -32,7 +35,8 @@ namespace restaurant_locator
             if (!status.Equals("OK"))
             {
                 //An error occured or there were no matches
-                Console.WriteLine("Query wasn't successful. Status code - " + status);
+                //Console.WriteLine("Query wasn't successful. Status code - " + status);
+                sendToClient("Query wasn't successful. Status code - " + status + '\n');
                 return;
             }
 
@@ -60,7 +64,8 @@ namespace restaurant_locator
             if (!(zipHash.ContainsKey(zipCode)))
             {
                 //If there are no restaurants in the zipcode
-                Console.WriteLine("No matches!");
+                //Console.WriteLine("No matches!");
+                sendToClient("No matches!\n");
                 return;
             }
             else
@@ -111,12 +116,14 @@ namespace restaurant_locator
 
                     if (distance <= searchRadius)
                     {
-                        Console.WriteLine(dstAddress + " | " + distance);
+                        //Console.WriteLine(dstAddress + " | " + distance);
+                        sendToClient(dstAddress + " | " + distance + '\n');
                         matchCount++;
                     }
                     System.Threading.Thread.Sleep(100);
                 }
-                Console.WriteLine("Number of matches = " + matchCount);
+                //Console.WriteLine("Number of matches = " + matchCount);
+                sendToClient("Number of matches = " + matchCount + '\n');
             }
         }
 
@@ -160,6 +167,88 @@ namespace restaurant_locator
             latlng[1] = Double.Parse(longitude);
 
             return latlng;
+        }
+
+        static void sendToClient(String message)
+        {
+            byte[] messageToSend = Encoding.ASCII.GetBytes(message);
+            handler.Send(messageToSend);
+        }
+
+        /*
+         * https://msdn.microsoft.com/en-us/library/6y0e13d3(v=vs.110).aspx
+         * */
+        public static void startListening()
+        {
+            byte[] bytes = new Byte[1024];
+            IPHostEntry ipHostInfo = Dns.Resolve(Dns.GetHostName());
+            IPAddress ipAddress = ipHostInfo.AddressList[0];
+            IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
+
+            //Create a TCP/IP Socket
+            Socket listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+            //Bind socket and start listening
+            try
+            {
+                listener.Bind(localEndPoint);
+                listener.Listen(10);
+
+                while(true){
+                    Console.WriteLine("Waiting for a connection...");
+                    // Program is suspended while waiting for an incoming connection.
+                    //Socket handler = listener.Accept();
+                    handler = listener.Accept();
+                    data = null;
+
+                    String searchAddress = null;
+                    String stringRadius = null;
+                    Double searchRadius = new Double();
+
+                    //Get street address from client
+                    /*byte[] msg = Encoding.ASCII.GetBytes("Enter the address\n");
+                    handler.Send(msg);*/
+                    sendToClient("Enter the addess\n");
+                    while (true)
+                    {
+                        bytes = new byte[1024];
+                        int bytesRec = handler.Receive(bytes);
+                        searchAddress += Encoding.ASCII.GetString(bytes, 0, bytesRec);
+                        if (searchAddress.IndexOf("\n") > -1)
+                        {
+                            break;
+                        }
+                    }
+                    Console.WriteLine(searchAddress);
+
+                    //Get search radius from client
+                    /*msg = Encoding.ASCII.GetBytes("Enter the search radius (miles)\n");
+                    handler.Send(msg);*/
+                    sendToClient("Enter the search radius\n");
+                    while (true)
+                    {
+                        bytes = new byte[1024];
+                        int bytesRec = handler.Receive(bytes);
+                        stringRadius += Encoding.ASCII.GetString(bytes, 0, bytesRec);
+                        if (stringRadius.IndexOf("\n") > -1)
+                        {
+                            break;
+                        }
+                    }
+                    searchRadius = Double.Parse(stringRadius);
+                    Console.WriteLine(searchRadius);
+
+                    //msg = Encoding.ASCII.GetBytes(data);
+                    //handler.Send(msg);
+
+                    restaurantSearch(searchAddress, searchRadius);
+                    handler.Shutdown(SocketShutdown.Both);
+                    handler.Close();
+                }
+            } catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
         }
 
         static void Main(string[] args)
@@ -213,14 +302,15 @@ namespace restaurant_locator
              * User enters street address and search radius
              * Return a list of restaurants that fall within the search radius
              * */
-            String searchAddress;
+            /*String searchAddress;
             Console.Write("Enter your address - ");
             searchAddress = Console.ReadLine();
             Double searchRadius = new Double();
             Console.Write("Enter your search radius - ");
             searchRadius = Double.Parse(Console.ReadLine());
-            googleGeoCode(searchAddress, searchRadius);
-            Console.WriteLine("Done");
+            restaurantSearch(searchAddress, searchRadius);
+            Console.WriteLine("Done");*/
+            startListening();
         }
     }
 }
