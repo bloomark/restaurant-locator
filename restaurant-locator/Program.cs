@@ -25,13 +25,24 @@ namespace restaurant_locator
         static GeoCoordinate src = null;
         static int queriesFired = 1;
         static int matchCount = 0;
+        static Object senderLock = new Object();
+        static Object counterLock = new Object();
+        static Object queriesLock = new Object();
+        static String TAMUAPIKey = "d66857a8877d48da8ace33d3f3c4d21c";
+        static TimeSpan startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+        static Double startSeconds = startTime.TotalMilliseconds;
+        static TimeSpan currTime = new TimeSpan();
+        static Double currSeconds = new Double();
 
         static void restaurantSearch(string address)
         {
+            Thread tamu = null;
+            Thread t = null;
             Stopwatch stopWatch = new Stopwatch();
             stopWatch.Start();
 
-            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
 
             var request = WebRequest.Create(requestURI);
             var response = request.GetResponse();
@@ -63,11 +74,9 @@ namespace restaurant_locator
                 i = i + 1;
             }
 
-            TimeSpan startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
-            Double startSeconds = startTime.TotalMilliseconds;
-
-            queriesFired = 0;
+            queriesFired = 1;
             matchCount = 0;
+            i = 0;
 
             if (!(zipHash.ContainsKey(zipCode)))
             {
@@ -90,12 +99,15 @@ namespace restaurant_locator
                 foreach (String[] restaurantAddress in matchList)
                 {
                     //Iterating over each restaurant in the matching zipcode
-                    if (queriesFired % 5 == 0)
+                    if (queriesFired == 5)
                     {
                         //Logic to ensure that you don't cross the query rate for the Google GeoCoding API
                         //5 queries per second
-                        TimeSpan currTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
-                        Double currSeconds = currTime.TotalMilliseconds;
+                        //t = new Thread(() => getTamuLatLong(restaurantAddress));
+                        //t.Start();
+                        getTamuLatLong(restaurantAddress);
+                        currTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+                        currSeconds = currTime.TotalMilliseconds;
 
                         int interval = (int)(currSeconds - startSeconds);
 
@@ -107,25 +119,27 @@ namespace restaurant_locator
                         startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
                         startSeconds = startTime.TotalMilliseconds;
                         queriesFired = 0;
+                        continue;
                     }
 
                     String dstAddress = restaurantAddress[9];
                     getGoogleLatLong(dstAddress);
+                    queriesFired++;
                 }
                 //Console.WriteLine("Number of matches = " + matchCount);
                 stopWatch.Stop();
-                sendToClient("Time elapsed = " + stopWatch.ElapsedMilliseconds.ToString() + "milliseconds \n");
-                sendToClient("Number of matches = " + matchCount + '\n');
             }
+            sendToClient("Time elapsed = " + stopWatch.ElapsedMilliseconds.ToString() + "milliseconds \n");
+            sendToClient("Number of matches = " + matchCount + '\n');
         }
 
         static void getGoogleLatLong(String address)
         {
-            queriesFired++;
+            Console.WriteLine("Google");
             Double[] latlng = new Double[2];
-
-            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
-
+            
+            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
             var request = WebRequest.Create(requestURI);
             WebResponse response = null;
 
@@ -135,8 +149,6 @@ namespace restaurant_locator
             }
             catch (WebException e)
             {
-                latlng[0] = 91.0;
-                latlng[1] = 181.0;
                 return;
             }
 
@@ -148,8 +160,6 @@ namespace restaurant_locator
             if (!status.Equals("OK"))
             {
                 //An error occured or there were no matches
-                latlng[0] = 91.0;
-                latlng[1] = 181.0;
                 return;
             }
 
@@ -168,16 +178,79 @@ namespace restaurant_locator
             if (distance <= searchRadius)
             {
                 //Console.WriteLine(dstAddress + " | " + distance);
-                sendToClient(address + " | " + distance + '\n');
-                matchCount++;
+                lock (senderLock)
+                {
+                    sendToClient(address + " | " + distance + '\n');
+                }
+                lock (counterLock)
+                {
+                    matchCount++;
+                }
             }
+            return;
+        }
+
+        static void getTamuLatLong(String[] address)
+        {
+            Console.WriteLine("TAMU");
+            Double[] latlng = new Double[2];
+
+            var requestURI = String.Format("http://geoservices.tamu.edu/Services/Geocode/WebService/GeocoderWebServiceHttpNonParsed_V04_01.aspx?apikey={0}&version=4.01&allowties=false&format=xml&streetAddress={1}&city={2}&state={3}&zip={4}", TAMUAPIKey, Uri.EscapeDataString(address[4]), address[5], address[6], address[7]);
+            
+            var request = WebRequest.Create(requestURI);
+            WebResponse response = null;
+
+            try
+            {
+                response = request.GetResponse();
+            }
+            catch (WebException e)
+            {
+                return;
+            }
+
+            XmlDocument xmlResult = new XmlDocument();
+            xmlResult.Load(response.GetResponseStream());
+
+            String latitude = xmlResult.SelectSingleNode("WebServiceGeocodeResult/OutputGeocodes/OutputGeocode/Latitude").InnerText;
+            String longitude = xmlResult.SelectSingleNode("WebServiceGeocodeResult/OutputGeocodes/OutputGeocode/Longitude").InnerText;
+
+            latlng[0] = Double.Parse(latitude);
+            latlng[1] = Double.Parse(longitude);
+
+            GeoCoordinate dst = new GeoCoordinate(latlng[0], latlng[1]);
+
+            //Calculate distance between the input location and the restaurant and convert to miles
+            Double distance = src.GetDistanceTo(dst);
+            distance = distance / 1609.344;
+
+            if (distance <= searchRadius)
+            {
+                //Console.WriteLine(dstAddress + " | " + distance);
+                lock (senderLock)
+                {
+                    sendToClient(address[9] + " | " + distance + '\n');
+                }
+                lock (counterLock)
+                {
+                    matchCount++;
+                }
+            }
+
             return;
         }
 
         static void sendToClient(String message)
         {
-            byte[] messageToSend = Encoding.ASCII.GetBytes(message);
-            handler.Send(messageToSend);
+            try
+            {
+                byte[] messageToSend = Encoding.ASCII.GetBytes(message);
+                handler.Send(messageToSend);
+            } catch(Exception e) {
+                Console.WriteLine("FAILED");
+                return;
+            }
+            //Console.WriteLine(message);
         }
 
         //https://msdn.microsoft.com/en-us/library/6y0e13d3(v=vs.110).aspx
@@ -245,6 +318,11 @@ namespace restaurant_locator
                     //handler.Send(msg);
 
                     restaurantSearch(searchAddress);
+                    lock (senderLock)
+                    {
+                        sendToClient("Done Searching\n");
+                    }
+                    Thread.Sleep(100);
                     handler.Shutdown(SocketShutdown.Both);
                     handler.Close();
                 }
