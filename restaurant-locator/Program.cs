@@ -113,7 +113,8 @@ namespace restaurant_locator
 
                         if (interval < 1000)
                         {
-                            System.Threading.Thread.Sleep(1000 - interval);
+                            //System.Threading.Thread.Sleep(1000 - interval);
+                            continue;
                         }
 
                         startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
@@ -138,8 +139,8 @@ namespace restaurant_locator
             Console.WriteLine("Google");
             Double[] latlng = new Double[2];
             
-            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
-            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
             var request = WebRequest.Create(requestURI);
             WebResponse response = null;
 
