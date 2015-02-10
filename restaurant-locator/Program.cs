@@ -12,6 +12,9 @@ using System.Xml.Linq;
 using System.Device.Location;
 using System.Threading;
 using System.Diagnostics;
+using System.Web;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace restaurant_locator
 {
@@ -28,11 +31,13 @@ namespace restaurant_locator
         static Object senderLock = new Object();
         static Object counterLock = new Object();
         static Object queriesLock = new Object();
-        static String TAMUAPIKey = "d66857a8877d48da8ace33d3f3c4d21c";
+        //static String TAMUAPIKey = "d66857a8877d48da8ace33d3f3c4d21c";
+        static String TAMUAPIKey = "90ef67dea3b04dedb6f7aa52263604a7";
         static TimeSpan startTime = (DateTime.UtcNow - new DateTime(1970, 1, 1));
         static Double startSeconds = startTime.TotalMilliseconds;
         static TimeSpan currTime = new TimeSpan();
         static Double currSeconds = new Double();
+        static String queryURL = "http://bloomark.github.io/?";
 
         static void restaurantSearch(string address)
         {
@@ -41,8 +46,8 @@ namespace restaurant_locator
             Stopwatch stopWatch = new Stopwatch();
             stopWatch.Start();
 
-            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
-            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
 
             var request = WebRequest.Create(requestURI);
             var response = request.GetResponse();
@@ -94,8 +99,10 @@ namespace restaurant_locator
                 Double lng = Double.Parse(longitude);
 
                 src = new GeoCoordinate(lat, lng);
-                ArrayList matchList = (ArrayList)zipHash[zipCode];
+                queryURL = queryURL + "lat=" + lat;
+                queryURL = queryURL + "&lng=" + lng + "&locations=";
 
+                ArrayList matchList = (ArrayList)zipHash[zipCode];
                 foreach (String[] restaurantAddress in matchList)
                 {
                     //Iterating over each restaurant in the matching zipcode
@@ -124,7 +131,7 @@ namespace restaurant_locator
                     }
 
                     String dstAddress = restaurantAddress[9];
-                    getGoogleLatLong(dstAddress);
+                    getGoogleLatLong(restaurantAddress);
                     queriesFired++;
                 }
                 //Console.WriteLine("Number of matches = " + matchCount);
@@ -132,14 +139,30 @@ namespace restaurant_locator
             }
             sendToClient("Time elapsed = " + stopWatch.ElapsedMilliseconds.ToString() + "milliseconds \n");
             sendToClient("Number of matches = " + matchCount + '\n');
+            queryURL = queryURL.Replace(' ', '+');
+
+            if (queryURL.Length > 4120)
+            {
+                queryURL = queryURL.Remove(4000);
+            }
+
+            string url = "https://www.googleapis.com/urlshortener/v1/url?key=" + APIKey;
+            WebClient client = new WebClient();
+            client.Headers["Content-Type"] = "application/json";
+            var shorten = client.UploadString(url, JsonConvert.SerializeObject(new { longUrl = queryURL}));
+
+            var shortURL = (string)JObject.Parse(shorten)["id"];
+
+            sendToClient(shortURL + '\n');
+            queryURL = "http://bloomark.github.io/?";
         }
 
-        static void getGoogleLatLong(String address)
+        static void getGoogleLatLong(String[] address)
         {
-            Console.WriteLine("Google");
+            //Console.WriteLine("Google");
             Double[] latlng = new Double[2];
             
-            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address), APIKey);
+            var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}&key={1}", Uri.EscapeDataString(address[9]), APIKey);
             //var requestURI = String.Format("https://maps.googleapis.com/maps/api/geocode/xml?address={0}", Uri.EscapeDataString(address));
             var request = WebRequest.Create(requestURI);
             WebResponse response = null;
@@ -181,7 +204,8 @@ namespace restaurant_locator
                 //Console.WriteLine(dstAddress + " | " + distance);
                 lock (senderLock)
                 {
-                    sendToClient(address + " | " + distance + '\n');
+                    sendToClient(address[9] + " | " + distance + '\n');
+                    queryURL = queryURL + address[3].Replace('&', '+').Replace('#', '+') + ',' + dst.Latitude + ',' + dst.Longitude + ',';
                 }
                 lock (counterLock)
                 {
@@ -193,7 +217,7 @@ namespace restaurant_locator
 
         static void getTamuLatLong(String[] address)
         {
-            Console.WriteLine("TAMU");
+            //Console.WriteLine("TAMU");
             Double[] latlng = new Double[2];
 
             var requestURI = String.Format("http://geoservices.tamu.edu/Services/Geocode/WebService/GeocoderWebServiceHttpNonParsed_V04_01.aspx?apikey={0}&version=4.01&allowties=false&format=xml&streetAddress={1}&city={2}&state={3}&zip={4}", TAMUAPIKey, Uri.EscapeDataString(address[4]), address[5], address[6], address[7]);
@@ -231,6 +255,7 @@ namespace restaurant_locator
                 lock (senderLock)
                 {
                     sendToClient(address[9] + " | " + distance + '\n');
+                    queryURL = queryURL + address[3].Replace('&', '+').Replace('#', '+') + ',' + dst.Latitude + ',' + dst.Longitude + ',';
                 }
                 lock (counterLock)
                 {
